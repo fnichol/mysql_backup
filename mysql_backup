@@ -72,7 +72,7 @@ backup_database() {
 
   local db="$1"
   shift
-  local db_file="$db-$(date +%FT%T)"
+  local db_file="$(hostname)-$db-$(date +%FT%T)"
 
   $__mysqldump --routines --comments --user=${__user} \
     --password=${__password} $db > ${__destination}/${db_file}.sql && \
