@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+log()   { printf "===> $*\n" ; return $? ; }
+
+fail()  { log "\n     ERROR: $*\n" ; exit 1 ; }
+
+usage() {
+  printf "
+
+Usage
+
+  mysql_backup [options] [databases]
+
+Options
+
+  --destination|-d <directory>  - Set the destination directory for the backup.
+                                  The default is the current working directory
+  --mysqldump|-m <path/to>      - Path to mysqldump if not in PATH
+  --gzip|-g <path/to>           - Path to gzip if not in PATH
+  --help                        - Display CLI help (this output)
+
+"
+}
+
+ensure_databases_requested() {
+  if [[ ${#__databases[@]} -eq 0 ]] ; then
+    fail "You must select at least one database to backup"
+  fi
+}
+
+resolve_commands() {
+  # resolve path to mysqldump if not given
+  if [[ -z "$__mysqldump" ]] ; then
+    if command -v mysqldump >/dev/null ; then
+      __mysqldump=$(which mysqldump)
+    else
+      fail "mysqldump not found on PATH, consider using --mysqldump flag"
+    fi
+  fi
+
+  # resolve path to gzip if not given
+  if [[ -z "$__gzip" ]] ; then
+    if command -v gzip >/dev/null ; then
+      __gzip=$(which gzip)
+    else
+      fail "gzip not found on PATH, consider using --gzip flag"
+    fi
+  fi
+
+  # resolve path to destination if not given
+  if [[ -z "$__destination" ]] ; then
+    __destination="$(pwd)"
+  fi
+}
+
+backup_database() {
+  [[ -z "$1" ]] && printf "Usage: backup_database <db_name>\n" && return 10
+
+  local db="$1"
+  shift
+  local db_file="$db-$(date +%FT%T)"
+
+  $__mysqldump --routines --comments $db > ${__destination}/${db_file}.sql && \
+    $__gzip -9 ${__destination}/${db_file}.sql
+  local result="$?"
+
+  if [[ $result -ne 0 ]] ; then
+    rm -f ${db_file}.sql
+  fi
+
+  return $result
+}
+
+backup_databases() {
+  __errors=()
+  for d in "${__databases[@]}" ; do
+    backup_database $d
+    if [[ $? -ne 0 ]] ; then
+      __errors+=("An error was encountered when backing up '$d'.")
+    fi
+  done ; unset d
+}
+
+check_for_errors() {
+  if [[ ${#__errors[@]} -gt 0 ]] ; then
+    log "[WARN] Errors where encountered during the run:"
+    for error in "${__errors[@]}" ; do
+      log "[WARN] ${error}"
+    done ; unset error
+    exit 99
+  fi
+}
+
+# initialize empty array
+__databases=()
+
+# Parse CLI arguments
+while [[ $# -gt 0 ]] ; do
+  token="$1" ; shift
+  case "$token" in
+
+    --destination|-d)
+      if [[ -d "$1" ]] ; then
+        __dest="$1" ; shift
+      else
+        fail "Destination directory ${1} does not exist"
+      fi
+      ;;
+
+    --mysqldump|-m)
+      if [[ -x "$1" ]] ; then
+        __mysqldump="$1" ; shift
+      else
+        fail "mysqldump does not exist at ${1}"
+      fi
+      ;;
+
+    --gzip|-g)
+      if [[ -x "$1" ]] ; then
+        __gzip="$1" ; shift
+      else
+        fail "gzip does not exist at ${1}"
+      fi
+      ;;
+
+    --help|--usage)
+      usage
+      exit 0
+      ;;
+
+    *)
+      __databases+=("$token")
+
+  esac
+done
+
+# Perform the actual work
+
+ensure_databases_requested
+
+resolve_commands
+
+backup_databases
+
+check_for_errors
+
+exit 0
