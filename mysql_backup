@@ -116,7 +116,7 @@ while [[ $# -gt 0 ]] ; do
 
     --destination|-d)
       if [[ -d "$1" ]] ; then
-        __dest="$1"
+        __destination="$1"
         shift
       else
         fail "Destination directory ${1} does not exist"
