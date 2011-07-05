@@ -15,6 +15,10 @@ Options
 
   --destination|-d <directory>  - Set the destination directory for the backup.
                                   The default is the current working directory
+  --user|-u <db_user>           - The user to use when running mysqldump. The
+                                  default is 'root'
+  --password|-p <password>      - The password to use when running mysqldump.
+                                  The default is an empty password, i.e. ''
   --mysqldump|-m <path/to>      - Path to mysqldump if not in PATH
   --gzip|-g <path/to>           - Path to gzip if not in PATH
   --help                        - Display CLI help (this output)
@@ -28,7 +32,7 @@ ensure_databases_requested() {
   fi
 }
 
-resolve_commands() {
+resolve_parameters() {
   # resolve path to mysqldump if not given
   if [[ -z "$__mysqldump" ]] ; then
     if command -v mysqldump >/dev/null ; then
@@ -51,6 +55,16 @@ resolve_commands() {
   if [[ -z "$__destination" ]] ; then
     __destination="$(pwd)"
   fi
+
+  # resolve user if not given
+  if [[ -z "$__user" ]] ; then
+    __user="root"
+  fi
+
+  # resolve password if not given
+  if [[ -z "$__password" ]] ; then
+    __password=""
+  fi
 }
 
 backup_database() {
@@ -60,7 +74,8 @@ backup_database() {
   shift
   local db_file="$db-$(date +%FT%T)"
 
-  $__mysqldump --routines --comments $db > ${__destination}/${db_file}.sql && \
+  $__mysqldump --routines --comments --user=${__user} \
+    --password=${__password} $db > ${__destination}/${db_file}.sql && \
     $__gzip -9 ${__destination}/${db_file}.sql
   local result="$?"
 
@@ -101,9 +116,28 @@ while [[ $# -gt 0 ]] ; do
 
     --destination|-d)
       if [[ -d "$1" ]] ; then
-        __dest="$1" ; shift
+        __dest="$1"
+        shift
       else
         fail "Destination directory ${1} does not exist"
+      fi
+      ;;
+
+    --user|-u)
+      if [[ -n "${1:-}" ]] ; then
+        __user="$1"
+        shift
+      else
+        fail "--user must be followed by a user"
+      fi
+      ;;
+
+    --password|-p)
+      if [[ -n "${1:-}" ]] ; then
+        __password="$1"
+        shift
+      else
+        fail "--password must be followed by a password"
       fi
       ;;
 
@@ -138,7 +172,7 @@ done
 
 ensure_databases_requested
 
-resolve_commands
+resolve_parameters
 
 backup_databases
 
